@@ -50,3 +50,12 @@ __pycache__/
 .vscode/
 *.aux *.log *.toc *.out *.synctex.gz   # LaTeX
 node_modules/                           # se houver frontend
+venv/
+__pycache__/
+*.pyc
+.env
+.venv/
+*.log
+.vscode/
+*.aux *.log *.toc *.out *.synctex.gz   # LaTeX
+node_modules/                           # se houver frontend
