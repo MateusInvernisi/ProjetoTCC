@@ -1,61 +1,17 @@
-# --- LaTeX ---
-*.aux
-*.bbl
-*.bcf
-*.blg
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.run.xml
-*.synctex.gz
-*.toc
-*.lof
-*.lot
-*.nav
-*.snm
-*.vrb
-*.pdf
-
-# --- Node/React ---
-node_modules/
-dist/
-.build/
-.cache/
-npm-debug.log*
-yarn-error.log*
-
-# --- Laravel/PHP ---
-/vendor/
-/bootstrap/cache/
-storage/*.key
-storage/logs/*
-storage/framework/cache/*
-storage/framework/sessions/*
-storage/framework/views/*
+# Ambiente virtual
+venv/
 .env
-.env.*.local
 
-# --- IDEs/SO ---
-.vscode/
-.idea/
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+
+# Configs locais
 .DS_Store
-Thumbs.db
-venv/
-__pycache__/
-*.pyc
-.env
-.venv/
-*.log
+.idea/
 .vscode/
-*.aux *.log *.toc *.out *.synctex.gz   # LaTeX
-node_modules/                           # se houver frontend
-venv/
-__pycache__/
-*.pyc
-.env
-.venv/
-*.log
-.vscode/
-*.aux *.log *.toc *.out *.synctex.gz   # LaTeX
-node_modules/                           # se houver frontend

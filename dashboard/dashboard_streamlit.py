@@ -133,8 +133,8 @@ tabs = st.tabs(["KPI Gestão", "KPI Paciente"])
 with st.sidebar:
     st.markdown("### Filtros Gerais")
     setor = st.text_input("Setor", value="CTI-ADULTO")
-    inicio = st.date_input("Início", value=date(2025, 8, 1), format="YYYY-MM-DD")
-    fim = st.date_input("Fim", value=date(2025, 9, 1), format="YYYY-MM-DD")
+    inicio = st.date_input("Início", value=date(2025, 8, 1), format="DD-MM-YYYY")
+    fim = st.date_input("Fim", value=date.today(), format="DD-MM-YYYY")
     inicio_str, fim_str = inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d")
 
 # ---------------------------
