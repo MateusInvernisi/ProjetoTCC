@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from db_connection import get_db
 from indicadores.gestao import build_kpi_cti_gestao
 from indicadores.paciente import build_kpi_paciente
+from typing import Dict
 
 
 load_dotenv()
@@ -82,3 +83,85 @@ def kpi_paciente(id_internacao: str):
     if "error" in data:
         raise HTTPException(404, data["error"])
     return data
+
+#####################################################
+# Função:      kpi_paciente
+# Rota:        GET /kpi/paciente/{id_internacao}
+#####################################################
+@app.get("/kpi/paciente/{id_internacao}")
+def kpi_paciente(id_internacao: str):
+    data = build_kpi_paciente(id_internacao)
+    if "error" in data:
+        raise HTTPException(404, data["error"])
+    return data
+
+#####################################################
+# Função:      listar_pacientes_internados_no_setor
+# Rota:        GET /pacientes/internados?setor=...
+#####################################################
+@app.get("/pacientes/internados", tags=["pacientes"])
+def listar_pacientes_internados_no_setor(setor: str) -> Dict:
+    try:
+        db = get_db()
+        estadas_coll = db["cti.estadas_setor"]
+        internacoes_coll = db["cti.internacoes"]
+
+        filtro_estadas = {
+            "id_setor": setor,
+            "$or": [{"fim": None}, {"fim": {"$exists": False}}]
+        }
+        estadas = list(estadas_coll.find(
+            filtro_estadas,
+            {"_id": 0, "id_internacao": 1, "inicio": 1}
+        ))
+        ids_internacao = [e["id_internacao"] for e in estadas]
+
+        if not ids_internacao:
+            return {"setor": setor, "pacientes": []}
+
+        cur = internacoes_coll.find(
+            {"id_internacao": {"$in": ids_internacao}, "alta_ts": None},
+            {"_id": 0, "id_internacao": 1, "id_paciente": 1, "admissao_ts": 1}
+        )
+
+        uniq = {}
+        for doc in cur:
+            uniq[doc["id_paciente"]] = {
+                "id_paciente": doc["id_paciente"],
+                "id_internacao": doc["id_internacao"],
+                "admissao_ts": doc.get("admissao_ts")
+            }
+
+        pacientes = sorted(
+            uniq.values(),
+            key=lambda x: x.get("admissao_ts") or ""
+        )
+
+        return {"setor": setor, "pacientes": pacientes}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar pacientes internados: {e}")
+
+
+#####################################################
+# Função:      listar_setores
+# Rota:        GET /setores
+#####################################################
+@app.get("/setores", tags=["referenciais"])
+def listar_setores():
+    try:
+        db = get_db()  # <-- importante
+        coll_setores = db["cti.setores"]
+        cur = coll_setores.find({}, {"_id": 0, "id_setor": 1, "nome": 1}).sort("id_setor", 1)
+        setores = [
+            {"id_setor": d["id_setor"], "nome": d.get("nome", d["id_setor"])}
+            for d in cur
+        ]
+
+        if not setores:
+            distintos = sorted(db["cti.estadas_setor"].distinct("id_setor"))
+            setores = [{"id_setor": s, "nome": s} for s in distintos]
+
+        return {"setores": setores}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar setores: {e}")

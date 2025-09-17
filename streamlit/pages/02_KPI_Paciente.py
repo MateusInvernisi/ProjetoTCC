@@ -1,14 +1,46 @@
 import pandas as pd
+import requests
 import streamlit as st
 
-from servicos.api import obter_kpi_paciente
+
+from servicos.api import obter_kpi_paciente, obter_api_base, carregar_setores
 from componentes.caixas import caixa_kpi
 from componentes.graficos import grafico_barras, grafico_linha_do_tempo, grafico_series
 from util.formatacao import dias_para_dias_horas, formatar_data_iso_br
 
 st.subheader("KPI Paciente (visão individual)")
 
-id_internacao = st.text_input("ID da internação", value="E-000123")
+opcoes_rotulo, mapa_rotulo_para_id = carregar_setores()
+
+if not opcoes_rotulo:
+    st.warning("Nenhum setor encontrado.")
+    st.stop()
+
+rotulo_escolhido = st.selectbox("Setor", opcoes_rotulo, key="kpi_ind_setor")
+setor = mapa_rotulo_para_id[rotulo_escolhido]
+
+# --- busca pacientes internados agora nesse setor ---
+resp = requests.get(
+    f"{obter_api_base()}/pacientes/internados",
+    params={"setor": setor},
+    timeout=10
+).json()
+
+lista_pacientes = resp.get("pacientes", [])
+
+if not lista_pacientes:
+    st.info("Nenhum paciente internado neste setor no momento.")
+    st.stop()
+
+opcoes = [f'{p["id_paciente"]} · {p["id_internacao"]}' for p in lista_pacientes]
+mapa = {f'{p["id_paciente"]} · {p["id_internacao"]}': p for p in lista_pacientes}
+
+escolha = st.selectbox("Paciente internado", opcoes, key="kpi_ind_paciente")
+selecionado = mapa[escolha]
+id_paciente = selecionado["id_paciente"]
+id_internacao = selecionado["id_internacao"]
+
+id_internacao = st.text_input("ID da internação", id_internacao)
 executar = st.button("Atualizar KPI Paciente")
 
 if executar and id_internacao.strip():
