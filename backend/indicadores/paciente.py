@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, DefaultDict
 from collections import defaultdict
 
-from app.db_connection import get_db
-from app.utils.time import diferenca_dias, diferenca_horas, data_iso_utc
+from db_connection import get_db
+from utils.time import diferenca_dias, diferenca_horas, data_iso_utc
 
 #####################################################
 # Entrada:     nome do exame (variações/minúsculas) valor (numérico ou str numérica)

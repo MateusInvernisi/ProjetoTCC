@@ -1,8 +1,8 @@
 from datetime import datetime
 from statistics import median
 from typing import Dict, Any, List, Tuple
-from app.db_connection import get_db
-from app.utils.time import p90, diferenca_dias, diferenca_horas, data_iso_utc
+from db_connection import get_db
+from utils.time import p90, diferenca_dias, diferenca_horas, data_iso_utc
 
 
 #####################################################
