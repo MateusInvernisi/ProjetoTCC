@@ -10,4 +10,4 @@ call venv\Scripts\activate
 
 REM 
 start "API - Uvicorn" cmd /k uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-start "Dashboard - Streamlit" cmd /k streamlit run dashboard\dashboard_streamlit.py
+start "Dashboard - Streamlit" cmd /k streamlit run streamlit/app.py

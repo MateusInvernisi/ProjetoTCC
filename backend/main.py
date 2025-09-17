@@ -2,9 +2,6 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from app.db_connection import get_db
-from app.indicadores.gestao import build_kpi_cti_gestao
-from app.indicadores.paciente import build_kpi_paciente
 
 
 load_dotenv()

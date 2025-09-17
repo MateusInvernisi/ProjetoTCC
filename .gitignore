@@ -1,17 +1,14 @@
-# Ambiente virtual
-venv/
-.env
-
-# Cache do Python
+# Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
+.venv/
+venv/
+*.env
+.env
 
-# Logs
-*.log
+# Streamlit
+streamlit/.streamlit/secrets.toml
 
-# Configs locais
-.DS_Store
-.idea/
+# VSCode/OS
 .vscode/
+.DS_Store
