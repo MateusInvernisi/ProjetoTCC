@@ -23,7 +23,7 @@ def get_db():
         return _db
 
     host = os.getenv("DB_HOST", "cluster0.mzspjjm.mongodb.net")
-    user = quote_plus(os.gewtenv("DB_USER", ""))
+    user = quote_plus(os.getenv("DB_USER", ""))
     pwd  = quote_plus(os.getenv("DB_PASS", ""))
     name = os.getenv("DB_NAME", "cti")
 

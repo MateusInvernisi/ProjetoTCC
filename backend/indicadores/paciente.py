@@ -2,15 +2,9 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, DefaultDict
 from collections import defaultdict
 
-from db_connection import get_db
-from utils.time import diferenca_dias, diferenca_horas, data_iso_utc
+from ..db_connection import get_db
+from ..utils.time import diferenca_dias, diferenca_horas, data_iso_utc
 
-#####################################################
-# Entrada:     nome do exame (variações/minúsculas) valor (numérico ou str numérica)
-# Saída:       str - flag (↑, ↓, acidose, alcalose) ou ""
-# Descrição:   Regras simples para destacar resultados fora de
-#              referência. Ajustar limiares conforme protocolo local.
-#####################################################
 def _lab_flag(exame: str, valor) -> str:
     if valor is None:
         return ""
@@ -19,7 +13,6 @@ def _lab_flag(exame: str, valor) -> str:
         v = float(valor)
     except Exception:
         return ""
-
     if ex == "creatinina": return "↑" if v > 1.2 else ""
     if ex == "ureia":      return "↑" if v > 50 else ""
     if ex == "hb":         return "↓" if v < 12 else ""
@@ -33,19 +26,7 @@ def _lab_flag(exame: str, valor) -> str:
     if ex == "glicemia":   return "↓" if v < 70 else ("↑" if v > 180 else "")
     return ""
 
-#####################################################
-# Função:      build_kpi_paciente
-# Entrada:     identificador único da internação, id_setor (str|None)
-# Saída:       Dict[str, Any] - documento JSON com KPIs individuais
-# Descrição:   KPIs por internação: tempo total, ventilação (tempo
-#              total e tempo até 1ª intubação, incluindo períodos
-#              em aberto), reintubação 48h, dispositivos, antibióticos
-#              e laboratoriais (últimos via aggregate + séries).
-#####################################################
 def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[str, Any]:
-    # -----------------------
-    # Contexto da internação
-    # -----------------------
     db = get_db()
     it = db.internacoes.find_one({"id_internacao": id_internacao})
     if not it:
@@ -62,12 +43,6 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
         tempo_total_internacao_d = diferenca_dias(adm_ts, now_utc)
         status = "internado"
 
-    # -----------------------
-    # Ventilação mecânica
-    # - Inclui períodos abertos (fim ausente -> now_utc)
-    # - Tempo até 1ª intubação
-    # - Flag de reintubação em 48h
-    # -----------------------
     vent = db.ventilacao.find_one({"id_internacao": id_internacao}) or {}
     periodos: List[Dict[str, Any]] = vent.get("periodos", []) or []
 
@@ -76,8 +51,7 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
     for p in periodos:
         ini = p.get("inicio")
         fim = p.get("fim")
-        end_ts = fim or now_utc  # inclui período aberto
-        # acumula apenas quando há início válido
+        end_ts = fim or now_utc
         if ini:
             total_secs += (end_ts - ini).total_seconds()
         periodos_serializados.append({
@@ -93,7 +67,6 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
         if vent.get("intubacoes_ts") else None
     )
 
-    # Reintubação 48h (extubação -> próxima intubação)
     reint_flag = False
     ext = sorted(vent.get("extubacoes_ts", []))
     intu = sorted(vent.get("intubacoes_ts", []))
@@ -103,10 +76,6 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
             reint_flag = True
             break
 
-    # -----------------------
-    # Dispositivos em uso
-    # - Mapeamento robusto: CVC, Foley, Art Line, Outros
-    # -----------------------
     disp_cur = db.dispositivo_uso.find({"id_internacao": id_internacao})
     disp = {"cvc": [], "foley": [], "art_line": [], "outros": []}
     for d in disp_cur:
@@ -122,14 +91,9 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
             "tipo_raw": d.get("tipo", "")
         })
 
-    # -----------------------
-    # Antibióticos
-    # - DOT e linhas do tempo
-    # -----------------------
     ab_docs = list(db.antibioticos_uso.find({"id_internacao": id_internacao}))
     ab_ids = [x["_id"] for x in ab_docs]
 
-    # Mapa de períodos por antibiótico (linhas do tempo)
     per_map: Dict[str, List[Dict[str, str]]] = {}
     if ab_ids:
         for p in db.antibiotico_periodos.find({"id_ab_uso": {"$in": ab_ids}}):
@@ -141,15 +105,9 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
     dot_por_ab = [{"antibiotico": d["antibiotico"], "dot_dias": d.get("dot_dias", 0)} for d in ab_docs]
     linhas = [{"antibiotico": d["antibiotico"], "periodos": per_map.get(str(d["_id"]), [])} for d in ab_docs]
 
-    # -----------------------
-    # Laboratoriais
-    # - Últimos via aggregate único (por exame)
-    # - Séries via consulta única e bucket por exame
-    # -----------------------
     exames_chave = ["creatinina", "ureia", "hb", "leucocitos", "plaquetas",
                     "ph", "pco2", "po2", "hco3", "lactato", "glicemia"]
 
-    # Aggregate para últimos (um doc por exame)
     ultimos_docs = list(db.labs.aggregate([
         {"$match": {"id_internacao": id_internacao, "exame": {"$in": exames_chave}}},
         {"$sort": {"exame": 1, "ts": -1}},
@@ -172,7 +130,6 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
             "data": data_iso_utc(doc["ts"]) if doc.get("ts") else None
         }
 
-    # Séries: uma única consulta, ordenada por ts crescente
     series_bucket: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
     cur = db.labs.find({"id_internacao": id_internacao, "exame": {"$in": exames_chave}}).sort("ts", 1)
     for x in cur:
@@ -198,19 +155,12 @@ def build_kpi_paciente(id_internacao: str, id_setor: str | None = None) -> Dict[
         "glicemia": series_bucket.get("glicemia", []),
     }
 
-    # -----------------------
-    # Sinalização de passagem no setor opcional
-    # -----------------------
     if id_setor:
         est_setor = db.estadas_setor.find_one({"id_internacao": id_internacao, "id_setor": id_setor})
         id_setor_out = id_setor if est_setor else ""
     else:
-        est_setor = None
         id_setor_out = ""
 
-    # -----------------------
-    # Documento de saída
-    # -----------------------
     return {
         "id_internacao": id_internacao,
         "id_setor": id_setor_out,

@@ -1,26 +1,63 @@
+# -*- coding: utf-8 -*-
+import sys
+from pathlib import Path
+from datetime import date, timedelta
+
 import pandas as pd
 import streamlit as st
-from datetime import date
+from requests.exceptions import HTTPError
 
-from servicos.api import obter_kpi_gestao
+# ============================================================
+# Shim de import: adiciona a pasta 'streamlit' no sys.path
+# para permitir imports absolutos 'from servicos ...',
+# 'from componentes ...', 'from util ...'
+# ============================================================
+_here = Path(__file__).resolve()
+_streamlit_dir = _here.parent.parent  # .../streamlit
+if str(_streamlit_dir) not in sys.path:
+    sys.path.append(str(_streamlit_dir))
+
+# ===== IMPORTS do app (alinhados com sua árvore) =====
+from servicos.api import obter_kpi_gestao, carregar_setores
 from componentes.caixas import caixa_kpi
-from componentes.graficos import (
-    grafico_barras,
-    grafico_donut_percentual,
-)
+from componentes.graficos import grafico_barras, grafico_donut_percentual
 from util.dicionarios import pegar_seguro
 from util.formatacao import formatar_data_iso_br
 
 st.subheader("KPI Gestão (Setor CTI)")
 
+# ---------------------------
 # Filtros (sidebar)
+# ---------------------------
 with st.sidebar:
     st.markdown("### Filtros Gerais")
-    setor = st.text_input("Setor", value="CTI-CENTRAL")
-    inicio = st.date_input("Início", value=date(2025, 8, 1), format="DD-MM-YYYY")
+    try:
+        itens = carregar_setores()  # [{id_setor, nome}] ou ["CTI-ADULTO", ...]
+    except Exception as e:
+        st.error(f"Falha ao carregar setores: {e}")
+        itens = []
+
+    if not itens:
+        st.warning("Nenhum setor encontrado no endpoint /kpi/setores.")
+        st.stop()
+
+    # Aceita lista de strings ou de dicts
+    if isinstance(itens[0], dict):
+        labels = [(it.get("nome") or it["id_setor"]) for it in itens]
+        mapa = {(it.get("nome") or it["id_setor"]): it["id_setor"] for it in itens}
+    else:
+        labels = [str(x) for x in itens]
+        mapa = {lbl: lbl for lbl in labels}
+
+    rotulo = st.selectbox("Setor", labels, index=0)
+    setor = mapa[rotulo]
+
     fim = st.date_input("Fim", value=date.today(), format="DD-MM-YYYY")
+    inicio = st.date_input("Início", value=date.today() - timedelta(days=30), format="DD-MM-YYYY")
+
     inicio_str, fim_str = inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d")
 
+# Info da seleção
 col_a, col_b = st.columns(2)
 with col_a:
     st.text(f"Setor:  {setor}")
@@ -29,37 +66,41 @@ with col_a:
 
 executar = st.button("Atualizar KPI Gestão", type="primary")
 
+# ---------------------------
+# Execução
+# ---------------------------
 if executar:
     try:
-        kpi = obter_kpi_gestao(setor, inicio_str, fim_str)
+        # O backend calcula e (por padrão) faz upsert no banco
+        kpi = obter_kpi_gestao(setor, inicio_str, fim_str, persistir=True)
 
         # ============ MÉTRICAS GERAIS ============
         c1, c2, c3, c4 = st.columns(4)
-        los = pegar_seguro(kpi, ["geral", "los"], {}) or {}
+        los  = pegar_seguro(kpi, ["geral", "los"], {}) or {}
         mort = pegar_seguro(kpi, ["geral", "mortalidade"], {}) or {}
         readm = pegar_seguro(kpi, ["geral", "readmissao_48h"], {}) or {}
         reint = pegar_seguro(kpi, ["geral", "reintubacao_48h"], {}) or {}
 
         caixa_kpi(c1, "LOS (dias)", [
-            ("Média", los.get("media_d", 0)),
+            ("Média",   los.get("media_d", 0)),
             ("Mediana", los.get("mediana_d", 0)),
-            ("P90", los.get("p90_d", 0)),
-            ("Saídas", los.get("quantidade_saidas", 0)),
+            ("P90",     los.get("p90_d", 0)),
+            ("Saídas",  los.get("quantidade_saidas", 0)),
         ])
         caixa_kpi(c2, "Mortalidade", [
             ("Óbitos", mort.get("obitos", 0)),
             ("Saídas", mort.get("saidas", 0)),
-            ("Taxa", f"{mort.get('taxa', 0) * 100:.1f}%"),
+            ("Taxa",  f"{mort.get('taxa', 0)*100:.1f}%"),
         ])
         caixa_kpi(c3, "Readmissão 48h", [
             ("Readmissões", readm.get("readmissoes", 0)),
-            ("Altas", readm.get("altas", 0)),
-            ("Taxa", f"{readm.get('taxa', 0) * 100:.1f}%"),
+            ("Altas",       readm.get("altas", 0)),
+            ("Taxa",        f"{readm.get('taxa', 0)*100:.1f}%"),
         ])
         caixa_kpi(c4, "Reintubação 48h", [
             ("Reintubações", reint.get("reintubacoes", 0)),
-            ("Extubações", reint.get("extubacoes", 0)),
-            ("Taxa", f"{reint.get('taxa', 0) * 100:.1f}%"),
+            ("Extubações",   reint.get("extubacoes", 0)),
+            ("Taxa",         f"{reint.get('taxa', 0)*100:.1f}%"),
         ])
 
         st.markdown("---")
@@ -70,10 +111,9 @@ if executar:
         with col_g1:
             if destino:
                 df_dest = pd.DataFrame(destino)
-                fig_pie = grafico_barras(df_dest, eixo_x="destino", eixo_y="quantidade", titulo="Destino da alta")
-                # Observação: se preferir pizza, use plotly.express.pie diretamente
-                if fig_pie:
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                fig_dest = grafico_barras(df_dest, eixo_x="destino", eixo_y="quantidade", titulo="Destino da alta")
+                if fig_dest:
+                    st.plotly_chart(fig_dest, use_container_width=True)
         with col_g2:
             if destino:
                 st.dataframe(pd.DataFrame(destino))
@@ -94,12 +134,12 @@ if executar:
         # ============ DISPOSITIVOS ============
         disp = pegar_seguro(kpi, ["dispositivos"], {}) or {}
 
-        # 1) Tempo até intubação / tempo de ventilação
+        # 1) Tempo até 1ª intubação / tempo de ventilação
         tti = pegar_seguro(disp, ["tempo_ate_intubacao_h"], {}) or {}
         tvm = pegar_seguro(disp, ["tempo_ventilacao"], {}) or {}
 
         d1, d2 = st.columns(2)
-        caixa_kpi(d1, "Tempo até primeira intubação (h)", [
+        caixa_kpi(d1, "Tempo até 1ª intubação (h)", [
             ("Média", tti.get("media_h", 0)),
             ("Mediana", tti.get("mediana_h", 0)),
             ("P90", tti.get("p90_h", 0)),
@@ -132,12 +172,12 @@ if executar:
             st.markdown("#### Período")
             caixa_kpi(st, "", [
                 ("Início", formatar_data_iso_br(pegar_seguro(kpi, ["periodo", "inicio"], ""))),
-                ("Fim", formatar_data_iso_br(pegar_seguro(kpi, ["periodo", "fim"], ""))),
+                ("Fim",    formatar_data_iso_br(pegar_seguro(kpi, ["periodo", "fim"], ""))),
             ])
 
         st.markdown("---")
 
-        # 3) Utilização por device (CVC/Foley/Art-line)
+        # 3) Utilização (device-days / patient-days)
         util_linhas = []
         for chave, rotulo, dias_key in [
             ("utilizacao_cvc", "CVC-days / patient-days", "cvc_days"),
@@ -186,7 +226,7 @@ if executar:
                 st.plotly_chart(fig_pc, use_container_width=True)
             st.dataframe(df_pc)
 
-    except requests.HTTPError as e:  # type: ignore[name-defined]
+    except HTTPError as e:
         st.error(f"Erro HTTP: {e} – {getattr(e.response, 'text', '')}")
     except Exception as e:
         st.error(f"Falha ao carregar KPI Gestão: {e}")
